@@ -77,7 +77,7 @@
 
   <div class="dak-chartbox"><canvas id="dak-canvas"></canvas></div>
 
-  <p class="dak-hint">Træk hen over grafen for at zoome. Maj 2026 er foreløbig og kan være ufuldstændigt indberettet.</p>
+  <p class="dak-hint">Navnene står ude til højre for hver linje. Træk hen over grafen for at zoome. Maj 2026 er foreløbig og kan være ufuldstændigt indberettet.</p>
 
   <div class="dak-source">
     Kilde: CVR &ndash; Det Centrale Virksomhedsregister (Erhvervsstyrelsen), datacvr.virk.dk
@@ -195,16 +195,70 @@
       });
   }
 
+  var endLabels = {
+    id: "dakEndLabels",
+    afterDatasetsDraw: function (c) {
+      var pad = c.options.layout.padding;
+      if (!pad || pad.right < 60) return;
+      var ctx = c.ctx, area = c.chartArea, items = [];
+      c.data.datasets.forEach(function (ds, i) {
+        var meta = c.getDatasetMeta(i);
+        if (meta.hidden) return;
+        var pts = meta.data, p = null;
+        for (var k = pts.length - 1; k >= 0; k--) {
+          if (pts[k].x <= area.right + 0.5 && pts[k].x >= area.left - 0.5) { p = pts[k]; break; }
+        }
+        if (!p) return;
+        var t = ds.label;
+        if (t.length > 20) { t = t.slice(0, 19).replace(/[ ,.]+$/, "") + "…"; }
+        items.push({ x: p.x, y: p.y, ly: p.y, text: t, color: ds.borderColor });
+      });
+      if (!items.length) return;
+      items.sort(function (a, b) { return a.y - b.y; });
+      var gap = 14, cur = area.top + 7;
+      items.forEach(function (it) { it.ly = Math.max(it.y, cur); cur = it.ly + gap; });
+      var over = items[items.length - 1].ly - (area.bottom - 4);
+      if (over > 0) {
+        for (var i = items.length - 1; i >= 0; i--) {
+          items[i].ly -= over;
+          if (i > 0 && items[i - 1].ly > items[i].ly - gap) { over = items[i - 1].ly - (items[i].ly - gap); }
+          else { break; }
+        }
+      }
+      ctx.save();
+      ctx.font = "600 12px Inter, system-ui, 'Segoe UI', Arial, sans-serif";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 1;
+      items.forEach(function (it) {
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = it.color;
+        ctx.beginPath();
+        ctx.moveTo(it.x + 2, it.y);
+        ctx.lineTo(area.right + 7, it.ly);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = it.color;
+        ctx.fillText(it.text, area.right + 10, it.ly);
+      });
+      ctx.restore();
+    }
+  };
+
+  function padRight(w) { return w < 620 ? 6 : 132; }
+
   function render() {
     var ds = datasets();
     if (chart) { chart.data.datasets = ds; chart.update(); return; }
-    chart = new Chart(document.getElementById("dak-canvas").getContext("2d"), {
+    var cv = document.getElementById("dak-canvas");
+    chart = new Chart(cv.getContext("2d"), {
       type: "line",
       data: { labels: DATA.labels, datasets: ds },
+      plugins: [endLabels],
       options: {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
-        layout: { padding: { top: 4, right: 4 } },
+        layout: { padding: { top: 4, right: padRight(cv.parentNode.clientWidth) } },
+        onResize: function (c, size) { c.options.layout.padding.right = padRight(size.width); },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -221,7 +275,13 @@
             grid: { color: "#E8EBE8" },
             ticks: {
               color: "#4A5A5F", font: { size: 15 }, autoSkip: false, maxRotation: 45, minRotation: 0,
-              callback: function (v, i) { return (i === DATA.labels.length - 1 || i % 3 === 0) ? DATA.labels[i] : ""; }
+              callback: function (v, i, ticks) {
+                var n = ticks.length;
+                var step = n > 60 ? 6 : (n > 30 ? 3 : (n > 14 ? 2 : 1));
+                if (((n - 1 - i) % step) !== 0) return "";
+                var k = (ticks[i] && ticks[i].value !== undefined) ? ticks[i].value : v;
+                return DATA.labels[k];
+              }
             }
           },
           y: {
