@@ -53,20 +53,24 @@ jobs:
 
       - name: Kontroller CVR-adgang
         if: steps.gate.outputs.run == 'true'
+        id: access
         shell: bash
         run: |
           if [ -z "$CVR_USER" ] || [ -z "$CVR_PASSWORD" ]; then
-            echo "CVR_USER og CVR_PASSWORD mangler som GitHub Actions secrets."
-            exit 1
+            echo "can_run=false" >> "$GITHUB_OUTPUT"
+            echo "CVR_USER og CVR_PASSWORD mangler som GitHub Actions secrets." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "Ingen data ændres. Tilføj de to secrets og kør workflowet manuelt igen." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "can_run=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-python@v5
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true'
         with:
           python-version: "3.12"
 
       - name: Hent CVR-data og opdater dashboard
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true'
         id: update
         shell: bash
         run: |
@@ -91,7 +95,7 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
       - name: Valider publiceringsfil
-        if: steps.gate.outputs.run == 'true' && steps.update.outputs.code == '0'
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true' && steps.update.outputs.code == '0'
         shell: bash
         run: |
           test -s index.html
@@ -100,7 +104,7 @@ jobs:
           grep -q "Kilde: CVR" index.html
 
       - name: Gem godkendt opdatering og driftsspor
-        if: steps.gate.outputs.run == 'true' && always()
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true' && always()
         shell: bash
         run: |
           git add index.html status/last-run.txt
@@ -118,5 +122,5 @@ jobs:
           git push
 
       - name: Markér reel opdateringsfejl
-        if: steps.gate.outputs.run == 'true' && steps.update.outputs.code != '0'
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true' && steps.update.outputs.code != '0'
         run: exit 1
