@@ -1,0 +1,2 @@
+status: ikke-koert
+note: Automatisk CVR-opdatering er opsat. Første kørsel kræver CVR_USER og CVR_PASSWORD som GitHub Actions secrets.

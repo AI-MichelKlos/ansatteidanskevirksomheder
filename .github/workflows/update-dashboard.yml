@@ -1,0 +1,126 @@
+name: Opdater ansatte i danske virksomheder
+run-name: "Ansatte i virksomheder - ${{ github.event_name }}"
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Tjek hver mandag. Dagslåsen nedenfor gennemfører kun en fuld automatisk
+    # opdatering, når der er gået mindst 13 dage siden seneste succes.
+    - cron: "37 7 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ansatte-i-danske-virksomheder-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CVR_USER: ${{ secrets.CVR_USER }}
+      CVR_PASSWORD: ${{ secrets.CVR_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Afgør om automatisk kørsel er nødvendig
+        id: gate
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manuel kørsel: opdateringen gennemføres nu."
+            exit 0
+          fi
+
+          today="$(TZ=Europe/Copenhagen date +'%F')"
+          last="$(sed -n 's/^dato_dk: //p' status/last-run.txt 2>/dev/null | head -n 1)"
+          state="$(sed -n 's/^status: //p' status/last-run.txt 2>/dev/null | head -n 1)"
+          if [ "$state" = "ok" ] && [ -n "$last" ]; then
+            days=$(( ( $(date -u -d "$today" +%s) - $(date -u -d "$last" +%s) ) / 86400 ))
+            if [ "$days" -lt 13 ]; then
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Seneste succes var $last ($days dage siden). Springer over."
+              exit 0
+            fi
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - name: Kontroller CVR-adgang
+        if: steps.gate.outputs.run == 'true'
+        id: access
+        shell: bash
+        run: |
+          if [ -z "$CVR_USER" ] || [ -z "$CVR_PASSWORD" ]; then
+            echo "can_run=false" >> "$GITHUB_OUTPUT"
+            echo "CVR_USER og CVR_PASSWORD mangler som GitHub Actions secrets." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "Ingen data ændres. Tilføj de to secrets og kør workflowet manuelt igen." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "can_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Hent CVR-data og opdater dashboard
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true'
+        id: update
+        shell: bash
+        run: |
+          mkdir -p status
+          started="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          today="$(TZ=Europe/Copenhagen date +'%F')"
+          set +e
+          python -m py_compile scripts/update_dashboard.py > status/run.log 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            python scripts/update_dashboard.py >> status/run.log 2>&1
+            code=$?
+          fi
+          set -e
+          cat status/run.log
+          if [ "$code" -eq 0 ]; then
+            printf 'status: ok\ntid_utc: %s\ndato_dk: %s\n' "$started" "$today" > status/last-run.txt
+          else
+            message="$(tail -n 12 status/run.log | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+            printf 'status: fejl\ntid_utc: %s\ndato_dk: %s\ntrin: opdatering\nfejl: %s\n' "$started" "$today" "$message" > status/last-run.txt
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Valider publiceringsfil
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true' && steps.update.outputs.code == '0'
+        shell: bash
+        run: |
+          test -s index.html
+          grep -q "Antal ansatte i Danmarks 1.000 største virksomheder" index.html
+          grep -q "var DATA =" index.html
+          grep -q "Kilde: CVR" index.html
+
+      - name: Gem godkendt opdatering og driftsspor
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true' && always()
+        shell: bash
+        run: |
+          git add index.html status/last-run.txt
+          if git diff --cached --quiet; then
+            echo "Ingen ændringer at gemme."
+            exit 0
+          fi
+          git config user.name "Dashboard automation"
+          git config user.email "dashboard-automation@users.noreply.github.com"
+          if [ "${{ steps.update.outputs.code }}" = "0" ]; then
+            git commit -m "Opdater ansatte i danske virksomheder"
+          else
+            git commit -m "Registrer fejl i virksomhedsopdatering"
+          fi
+          git push
+
+      - name: Markér reel opdateringsfejl
+        if: steps.gate.outputs.run == 'true' && steps.access.outputs.can_run == 'true' && steps.update.outputs.code != '0'
+        run: exit 1
