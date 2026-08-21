@@ -13,7 +13,7 @@ BASE = Path(__file__).resolve().parents[1]
 HTML = BASE / "index.html"
 ENDPOINT = os.environ.get(
     "CVR_ENDPOINT",
-    "https://distribution.virk.dk/cvr-permanent/virksomhed/_search",
+    "http://distribution.virk.dk/cvr-permanent/virksomhed/_search",
 )
 MONTHS_DA = ["Jan", "Feb", "Mar", "Apr", "Maj", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"]
 
