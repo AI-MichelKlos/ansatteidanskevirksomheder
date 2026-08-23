@@ -1,0 +1,29 @@
+name: Ret kontaktmail
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-contact-email.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ret kontaktmail
+        shell: bash
+        run: |
+          sed -i 's/mk@danskeakasser\.dk/michel@klos.dk/g' index.html
+          if git diff --quiet -- index.html; then
+            echo "Ingen ændring nødvendig"
+            exit 0
+          fi
+          git config user.name "Dashboard maintenance"
+          git config user.email "dashboard-maintenance@users.noreply.github.com"
+          git add index.html
+          git commit -m "Ret kontaktmail til michel@klos.dk"
+          git push
