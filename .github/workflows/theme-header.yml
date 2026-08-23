@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/theme-header.yml"
+      - "pulse.css"
+      - "pulse.js"
 
 permissions:
   contents: write
@@ -15,43 +17,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Anvend fælles dashboard-header
+      - name: Anvend fælles dashboard-header og virksomhedspuls
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('index.html')
-          text = p.read_text(encoding='utf-8')
-          style_start = '<style id="dak-header-theme">'
-          style_end = '</style><!-- /dak-header-theme -->'
-          style = '''<style id="dak-header-theme">
+          p=Path('index.html');text=p.read_text(encoding='utf-8')
+          style_start='<style id="dak-header-theme">';style_end='</style><!-- /dak-header-theme -->'
+          style='''<style id="dak-header-theme">
           body{margin:0;background:#f5f7f5}
           .dak-theme-hero{background-color:#4B4558;background-image:linear-gradient(135deg,rgba(75,69,88,.31),rgba(44,40,55,.52)),url("https://raw.githubusercontent.com/AI-MichelKlos/A-kasseindsigt-dashboard/main/assets/arbejdsmarkedets-puls.webp");background-position:center 46%,center;background-size:cover,cover;background-repeat:no-repeat,no-repeat;color:#fff;padding:32px 20px}
           .dak-theme-hero-inner{max-width:1080px;margin:0 auto}.dak-theme-hero h1{margin:0;font-size:clamp(2.1rem,4vw,3.4rem)!important;line-height:1.08!important;color:#fff!important;font-weight:700!important}.dak-theme-hero .dak-subtitle{margin-top:8px!important;color:#eeeaf2!important;font-size:1rem!important}.dak-theme-byline{font-size:.78rem;color:#d7d1df;font-weight:600;margin-top:5px}
-          #dak-ansatte{padding-top:22px}
-          @media(max-width:600px){.dak-theme-hero{background-position:58% center,center;padding:30px 18px}}
+          #dak-ansatte{padding-top:22px}@media(max-width:600px){.dak-theme-hero{background-position:58% center,center;padding:30px 18px}}
           </style><!-- /dak-header-theme -->'''
-          script_start = '<script id="dak-header-theme-script">'
-          script_end = '</script><!-- /dak-header-theme-script -->'
-          script = '''<script id="dak-header-theme-script">
-          document.addEventListener('DOMContentLoaded',function(){
-            if(document.querySelector('.dak-theme-hero'))return;
-            var root=document.getElementById('dak-ansatte');if(!root)return;
-            var title=root.querySelector(':scope > h1'),sub=root.querySelector(':scope > .dak-subtitle');if(!title)return;
-            var hero=document.createElement('header');hero.className='dak-theme-hero';
-            var inner=document.createElement('div');inner.className='dak-theme-hero-inner';hero.appendChild(inner);
-            root.parentNode.insertBefore(hero,root);inner.appendChild(title);if(sub)inner.appendChild(sub);
-            var by=document.createElement('div');by.className='dak-theme-byline';by.textContent='Udarbejdet af Michel Klos';inner.appendChild(by);
-          });
+          script_start='<script id="dak-header-theme-script">';script_end='</script><!-- /dak-header-theme-script -->'
+          script='''<script id="dak-header-theme-script">
+          document.addEventListener('DOMContentLoaded',function(){if(document.querySelector('.dak-theme-hero'))return;var root=document.getElementById('dak-ansatte');if(!root)return;var title=root.querySelector(':scope > h1'),sub=root.querySelector(':scope > .dak-subtitle');if(!title)return;var hero=document.createElement('header');hero.className='dak-theme-hero';var inner=document.createElement('div');inner.className='dak-theme-hero-inner';hero.appendChild(inner);root.parentNode.insertBefore(hero,root);inner.appendChild(title);if(sub)inner.appendChild(sub);var by=document.createElement('div');by.className='dak-theme-byline';by.textContent='Udarbejdet af Michel Klos';inner.appendChild(by)});
           </script><!-- /dak-header-theme-script -->'''
           if style_start in text and style_end in text:
               a=text.index(style_start);b=text.index(style_end,a)+len(style_end);text=text[:a]+style+text[b:]
-          else:
-              text=text.replace('</head>',style+'\n</head>',1)
+          else:text=text.replace('</head>',style+'\n</head>',1)
           if script_start in text and script_end in text:
               a=text.index(script_start);b=text.index(script_end,a)+len(script_end);text=text[:a]+script+text[b:]
-          else:
-              text=text.replace('</body>',script+'\n</body>',1)
+          else:text=text.replace('</body>',script+'\n</body>',1)
+          if 'href="pulse.css"' not in text:text=text.replace('</head>','<link rel="stylesheet" href="pulse.css">\n</head>',1)
+          if 'src="pulse.js"' not in text:text=text.replace('</body>','<script src="pulse.js"></script>\n</body>',1)
           p.write_text(text,encoding='utf-8')
           PY
       - name: Gem ændringen
@@ -60,5 +50,5 @@ jobs:
           if git diff --cached --quiet; then exit 0; fi
           git config user.name "Dashboard design"
           git config user.email "dashboard-design@users.noreply.github.com"
-          git commit -m "Giv virksomheds-dashboard eget topdesign"
+          git commit -m "Tilføj virksomhedspuls og fælles topdesign"
           git push
