@@ -60,6 +60,8 @@ jobs:
             echo "can_run=false" >> "$GITHUB_OUTPUT"
             echo "CVR_USER og CVR_PASSWORD mangler som GitHub Actions secrets." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "Ingen data ændres. Tilføj de to secrets og kør workflowet manuelt igen." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "::error::CVR-adgang mangler. Dataopdateringen er ikke gennemført."
+            exit 1
           else
             echo "can_run=true" >> "$GITHUB_OUTPUT"
           fi
